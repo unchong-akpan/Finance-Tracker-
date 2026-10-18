@@ -1,72 +1,82 @@
 import { Router } from 'express';
-import { getAll, create, update, remove, query } from '../models/database.js';
+import { create, update, remove, db } from '../models/database.js';
+import { validate, createTransactionSchema, updateTransactionSchema, transactionQuerySchema } from '../lib/validate.js';
 
 const router = Router();
 
-router.get('/', (req, res) => {
-  const { category, type, start_date, end_date } = req.query;
+router.get('/', validate(transactionQuerySchema, 'query'), async (req, res, next) => {
+  try {
+    const { category, type, start_date, end_date } = req.query;
 
-  let transactions = query('transactions', { category, type });
+    let sql = 'SELECT * FROM transactions WHERE 1=1';
+    const params = [];
 
-  if (start_date) {
-    transactions = transactions.filter((t) => t.date >= start_date);
+    if (category) {
+      sql += ' AND category = ?';
+      params.push(category);
+    }
+    if (type) {
+      sql += ' AND type = ?';
+      params.push(type);
+    }
+    if (start_date) {
+      sql += ' AND date >= ?';
+      params.push(start_date);
+    }
+    if (end_date) {
+      sql += ' AND date <= ?';
+      params.push(end_date);
+    }
+    sql += ' ORDER BY date DESC';
+
+    const transactions = db.prepare(sql).all(...params);
+    res.json(transactions);
+  } catch (err) {
+    next(err);
   }
-  if (end_date) {
-    transactions = transactions.filter((t) => t.date <= end_date);
-  }
-
-  transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-  res.json(transactions);
 });
 
-router.post('/', (req, res) => {
-  const { type, amount, category, description, date } = req.body;
+router.post('/', validate(createTransactionSchema), async (req, res, next) => {
+  try {
+    const { type, amount, category, description, date, recurring_id } = req.body;
 
-  if (!type || !amount || !category || !date) {
-    return res.status(400).json({ error: 'Missing required fields' });
+    const transaction = await create('transactions', {
+      type,
+      amount,
+      category,
+      description,
+      date,
+      recurring_id: recurring_id || null,
+    });
+
+    res.status(201).json(transaction);
+  } catch (err) {
+    next(err);
   }
-
-  const transaction = create('transactions', {
-    type,
-    amount: parseFloat(amount),
-    category,
-    description: description || '',
-    date,
-  });
-
-  res.status(201).json(transaction);
 });
 
-router.put('/:id', (req, res) => {
-  const { id } = req.params;
-  const { type, amount, category, description, date } = req.body;
-
-  const existing = getAll('transactions').find((t) => t.id === parseInt(id));
-  if (!existing) {
-    return res.status(404).json({ error: 'Transaction not found' });
+router.put('/:id', validate(updateTransactionSchema), async (req, res, next) => {
+  try {
+    const updated = await update('transactions', req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    res.json(updated);
+  } catch (err) {
+    next(err);
   }
-
-  const updated = update('transactions', parseInt(id), {
-    type: type || existing.type,
-    amount: amount ? parseFloat(amount) : existing.amount,
-    category: category || existing.category,
-    description: description ?? existing.description,
-    date: date || existing.date,
-  });
-
-  res.json(updated);
 });
 
-router.delete('/:id', (req, res) => {
-  const { id } = req.params;
-
-  const existing = getAll('transactions').find((t) => t.id === parseInt(id));
-  if (!existing) {
-    return res.status(404).json({ error: 'Transaction not found' });
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const deleted = await remove('transactions', req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    res.json({ message: 'Transaction deleted' });
+  } catch (err) {
+    next(err);
   }
-
-  remove('transactions', parseInt(id));
-  res.json({ message: 'Transaction deleted' });
 });
 
 export default router;

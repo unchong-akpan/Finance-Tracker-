@@ -1,0 +1,318 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Finance Tracker API",
+    "version": "1.0.0",
+    "description": "Personal finance tracker API — transactions, budgets, recurring rules, stats, and auth."
+  },
+  "servers": [{ "url": "/api" }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "Transaction": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["income", "expense"] },
+          "amount": { "type": "number", "exclusiveMinimum": 0 },
+          "category": { "type": "string" },
+          "description": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "recurring_id": { "type": "string", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "nullable": true }
+        }
+      },
+      "Budget": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "category": { "type": "string" },
+          "amount": { "type": "number", "exclusiveMinimum": 0 },
+          "month": { "type": "string", "pattern": "^\\d{4}-\\d{2}$" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "nullable": true }
+        }
+      },
+      "Recurring": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["income", "expense"] },
+          "amount": { "type": "number", "exclusiveMinimum": 0 },
+          "category": { "type": "string" },
+          "description": { "type": "string" },
+          "day_of_month": { "type": "integer", "minimum": 1, "maximum": 31 },
+          "start_month": { "type": "string", "nullable": true },
+          "end_month": { "type": "string", "nullable": true },
+          "active": { "type": "boolean" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": { "type": "string" },
+                "message": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/health": {
+      "get": {
+        "security": [],
+        "summary": "Health check",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/auth/status": {
+      "get": {
+        "security": [],
+        "summary": "Check if auth is required",
+        "responses": { "200": { "description": "Auth status" } }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "security": [],
+        "summary": "Register a new user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 8 },
+                  "name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "User created" },
+          "400": { "description": "Validation error" },
+          "409": { "description": "Email already registered" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "security": [],
+        "summary": "Login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "JWT token" },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Get current user",
+        "responses": { "200": { "description": "Current user" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/transactions": {
+      "get": {
+        "summary": "List transactions",
+        "parameters": [
+          { "name": "category", "in": "query", "schema": { "type": "string" } },
+          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["income", "expense"] } },
+          { "name": "start_date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "end_date", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Transaction list" } }
+      },
+      "post": {
+        "summary": "Create transaction",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["type", "amount", "category", "date"],
+                "properties": {
+                  "type": { "type": "string", "enum": ["income", "expense"] },
+                  "amount": { "type": "number", "exclusiveMinimum": 0 },
+                  "category": { "type": "string" },
+                  "description": { "type": "string" },
+                  "date": { "type": "string", "format": "date" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created" },
+          "400": { "description": "Validation error" }
+        }
+      }
+    },
+    "/transactions/{id}": {
+      "put": {
+        "summary": "Update transaction",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object" } } }
+        },
+        "responses": { "200": { "description": "Updated" }, "404": { "description": "Not found" } }
+      },
+      "delete": {
+        "summary": "Delete transaction",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Deleted" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/budgets": {
+      "get": {
+        "summary": "List budgets",
+        "parameters": [{ "name": "month", "in": "query", "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}$" } }],
+        "responses": { "200": { "description": "Budget list" } }
+      },
+      "post": {
+        "summary": "Create/update budget (upsert by category+month)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["category", "amount", "month"],
+                "properties": {
+                  "category": { "type": "string" },
+                  "amount": { "type": "number", "exclusiveMinimum": 0 },
+                  "month": { "type": "string", "pattern": "^\\d{4}-\\d{2}$" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Updated" }, "201": { "description": "Created" } }
+      }
+    },
+    "/budgets/{id}": {
+      "delete": {
+        "summary": "Delete budget",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Deleted" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/recurring": {
+      "get": {
+        "summary": "List recurring rules",
+        "responses": { "200": { "description": "Recurring list" } }
+      },
+      "post": {
+        "summary": "Create recurring rule",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["type", "amount", "category", "day_of_month"],
+                "properties": {
+                  "type": { "type": "string", "enum": ["income", "expense"] },
+                  "amount": { "type": "number", "exclusiveMinimum": 0 },
+                  "category": { "type": "string" },
+                  "description": { "type": "string" },
+                  "day_of_month": { "type": "integer", "minimum": 1, "maximum": 31 },
+                  "start_month": { "type": "string" },
+                  "end_month": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created" }, "400": { "description": "Validation error" } }
+      }
+    },
+    "/recurring/{id}": {
+      "delete": {
+        "summary": "Delete recurring rule",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Deleted" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/recurring/generate": {
+      "post": {
+        "summary": "Generate transactions for a month from recurring rules",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["month"],
+                "properties": { "month": { "type": "string", "pattern": "^\\d{4}-\\d{2}$" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Generated transactions" } }
+      }
+    },
+    "/stats/summary": {
+      "get": {
+        "summary": "Income/expense/balance summary",
+        "parameters": [{ "name": "month", "in": "query", "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}$" } }],
+        "responses": { "200": { "description": "Summary" } }
+      }
+    },
+    "/stats/by-category": {
+      "get": {
+        "summary": "Spending by category",
+        "parameters": [
+          { "name": "month", "in": "query", "schema": { "type": "string" } },
+          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["income", "expense"] } }
+        ],
+        "responses": { "200": { "description": "Category totals" } }
+      }
+    },
+    "/stats/monthly": {
+      "get": {
+        "summary": "Monthly income/expense breakdown (last 12 months)",
+        "responses": { "200": { "description": "Monthly stats" } }
+      }
+    },
+    "/stats/recent": {
+      "get": {
+        "summary": "Recent transactions",
+        "parameters": [{ "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100 } }],
+        "responses": { "200": { "description": "Recent transactions" } }
+      }
+    }
+  }
+}

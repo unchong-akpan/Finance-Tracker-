@@ -1,188 +1,153 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { format } from 'date-fns';
-import { budgets, stats } from '../api';
-
-const CATEGORIES = [
-  'Food & Dining', 'Transportation', 'Housing', 'Utilities', 'Entertainment',
-  'Shopping', 'Healthcare', 'Education', 'Savings', 'Other',
-];
+import { useQueryClient } from '@tanstack/react-query';
+import { useBudgets, useCreateBudget, useDeleteBudget, budgetKeys } from '../hooks/useBudgets';
+import { useStatsByCategory } from '../hooks/useStats';
+import { PageHeader } from '../components/layout/PageHeader';
+import { BudgetForm } from '../components/budgets/BudgetForm';
+import { BudgetCard } from '../components/budgets/BudgetCard';
+import { BudgetCardSkeleton } from '../components/ui/Skeleton';
+import { ErrorState, EmptyState } from '../components/ui/EmptyState';
+import { ConfirmModal } from '../components/ui/Modal';
+import { useToast } from '../components/ui/Toast';
+import { logActivity } from '../lib/activity';
 
 export default function Budgets() {
-  const [budgetList, setBudgetList] = useState([]);
-  const [spent, setSpent] = useState({});
+  const toast = useToast();
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [month, setMonth] = useState(() => format(new Date(), 'yyyy-MM'));
   const [formData, setFormData] = useState({
     category: 'Food & Dining',
     amount: '',
     month: format(new Date(), 'yyyy-MM'),
   });
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
-  useEffect(() => {
-    loadBudgets();
-  }, []);
+  const { data: budgetList = [], isLoading, isError, refetch } = useBudgets({ month });
+  const { data: spentData = [] } = useStatsByCategory({ month, type: 'expense' });
+  const createMutation = useCreateBudget();
+  const deleteMutation = useDeleteBudget();
 
-  const loadBudgets = async () => {
-    try {
-      const [budgetRes, spentRes] = await Promise.all([
-        budgets.getAll({ month: formData.month }),
-        stats.getByCategory({ month: formData.month, type: 'expense' }),
-      ]);
-      setBudgetList(budgetRes.data);
-
-      const spentMap = {};
-      spentRes.data.forEach((item) => {
-        spentMap[item.category] = item.total;
-      });
-      setSpent(spentMap);
-    } catch (error) {
-      console.error('Error loading budgets:', error);
-    }
-  };
+  const spent = spentData.reduce((acc, item) => {
+    acc[item.category] = item.total;
+    return acc;
+  }, {});
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const amount = parseFloat(formData.amount);
     try {
-      await budgets.create({
-        ...formData,
-        amount: parseFloat(formData.amount),
+      await createMutation.mutateAsync({ ...formData, amount });
+      logActivity({
+        action: 'create',
+        entity: 'budget',
+        label: `${formData.category} $${amount.toFixed(2)}`,
+        detail: formData.month,
       });
+      toast.success('Budget saved');
       setShowForm(false);
       setFormData({ ...formData, amount: '' });
-      loadBudgets();
-    } catch (error) {
-      console.error('Error creating budget:', error);
+      if (formData.month !== month) setMonth(formData.month);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to save budget.');
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this budget?')) return;
-    try {
-      await budgets.delete(id);
-      loadBudgets();
-    } catch (error) {
-      console.error('Error deleting budget:', error);
-    }
-  };
+  const handleDeleteConfirm = () => {
+    const id = confirmDelete;
+    const b = budgetList.find((x) => x.id === id);
+    if (!b) return setConfirmDelete(null);
+    setConfirmDelete(null);
 
-  const getProgressColor = (percent) => {
-    if (percent >= 100) return 'bg-red-500';
-    if (percent >= 75) return 'bg-yellow-500';
-    return 'bg-green-500';
+    const previous = queryClient.getQueriesData({ queryKey: budgetKeys.all });
+    queryClient.setQueriesData({ queryKey: budgetKeys.all }, (old) =>
+      Array.isArray(old) ? old.filter((x) => x.id !== id) : old
+    );
+
+    const label = `${b.category} $${b.amount.toFixed(2)}`;
+    toast.undo({
+      message: `Deleted ${label} budget`,
+      duration: 5000,
+      onUndo: () => {
+        previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
+        logActivity({ action: 'undo', entity: 'budget', label, detail: 'Delete cancelled' });
+        toast.success('Delete undone');
+      },
+      onTimeout: async () => {
+        try {
+          await deleteMutation.mutateAsync(id);
+          logActivity({ action: 'delete', entity: 'budget', label, detail: b.month });
+        } catch {
+          previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
+          toast.error('Failed to delete budget.');
+        }
+      },
+    });
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Budgets</h2>
+      <PageHeader title="Budgets">
+        <input
+          type="month"
+          aria-label="View month"
+          value={month}
+          onChange={(e) => e.target.value && setMonth(e.target.value)}
+          className="border dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+        />
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            setFormData({ ...formData, month });
+            setShowForm(!showForm);
+          }}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"
         >
           {showForm ? 'Cancel' : '+ Add Budget'}
         </button>
-      </div>
+      </PageHeader>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border dark:border-gray-700 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full border dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Budget Amount</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                className="w-full border dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                placeholder="0.00"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Month</label>
-              <input
-                type="month"
-                required
-                value={formData.month}
-                onChange={(e) => {
-                  setFormData({ ...formData, month: e.target.value });
-                }}
-                className="w-full border dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-          </div>
-          <button
-            type="submit"
-            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
-          >
-            Save Budget
-          </button>
-        </form>
+        <BudgetForm
+          formData={formData}
+          setFormData={setFormData}
+          onSubmit={handleSubmit}
+          onCancel={() => setShowForm(false)}
+          saving={createMutation.isPending}
+        />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {budgetList.map((b) => {
-          const used = spent[b.category] || 0;
-          const percent = Math.min((used / b.amount) * 100, 100);
-
-          return (
-            <div key={b.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border dark:border-gray-700">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">{b.category}</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{b.month}</p>
-                </div>
-                <button
-                  onClick={() => handleDelete(b.id)}
-                  className="text-gray-400 hover:text-red-600 dark:hover:text-red-400"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="mb-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">
-                    ${used.toLocaleString('en-US', { minimumFractionDigits: 2 })} spent
-                  </span>
-                  <span className="font-medium text-gray-900 dark:text-white">
-                    ${b.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full ${getProgressColor(percent)} transition-all`}
-                  style={{ width: `${percent}%` }}
-                />
-              </div>
-
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-right">
-                {percent.toFixed(0)}% used
-              </p>
-            </div>
-          );
-        })}
-      </div>
-
-      {budgetList.length === 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-8 border dark:border-gray-700 text-center">
-          <p className="text-gray-500 dark:text-gray-400">No budgets set for this month. Add one to start tracking!</p>
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <BudgetCardSkeleton />
+          <BudgetCardSkeleton />
+          <BudgetCardSkeleton />
+        </div>
+      ) : isError ? (
+        <ErrorState message="Failed to load budgets." onRetry={refetch} />
+      ) : budgetList.length === 0 ? (
+        <EmptyState message="No budgets set for this month. Add one to start tracking!" />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {budgetList.map((b) => (
+            <BudgetCard
+              key={b.id}
+              budget={b}
+              spent={spent[b.category] || 0}
+              onDelete={(id) => setConfirmDelete(id)}
+            />
+          ))}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete budget?"
+        message="It will be removed in 5 seconds — click Undo in the toast to cancel."
+        confirmLabel="Delete"
+      />
     </div>
   );
 }
