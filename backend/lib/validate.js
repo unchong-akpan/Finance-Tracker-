@@ -84,6 +84,22 @@ export const statsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+// CSV Import
+export const importTransactionsSchema = z.object({
+  transactions: z
+    .array(
+      z.object({
+        type: transactionType,
+        amount: positiveAmount,
+        category: z.string().min(1, 'Category is required'),
+        description: z.string().optional().default(''),
+        date: dateFormat,
+      })
+    )
+    .min(1, 'At least one transaction is required')
+    .max(500, 'Maximum 500 transactions per import'),
+});
+
 // Validation middleware factory
 export function validate(schema, source = 'body') {
   return (req, res, next) => {

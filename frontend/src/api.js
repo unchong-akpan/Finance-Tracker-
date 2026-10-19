@@ -46,6 +46,7 @@ export const transactions = {
   create: (data) => api.post('/transactions', data),
   update: (id, data) => api.put(`/transactions/${id}`, data),
   delete: (id) => api.delete(`/transactions/${id}`),
+  import: (data) => api.post('/transactions/import', data),
 };
 
 export const budgets = {

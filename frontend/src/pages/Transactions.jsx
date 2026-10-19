@@ -12,6 +12,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionFilters } from '../components/transactions/TransactionFilters';
 import { TransactionTable } from '../components/transactions/TransactionTable';
+import { ImportButton } from '../components/transactions/ImportButton';
 import { ConfirmModal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
 import { useToast } from '../components/ui/Toast';
@@ -203,6 +204,7 @@ export default function Transactions() {
   return (
     <div className="space-y-6">
       <PageHeader title="Transactions">
+        <ImportButton onImported={() => queryClient.invalidateQueries({ queryKey: transactionKeys.all })} />
         <button
           onClick={exportCsv}
           disabled={!filteredList.length}

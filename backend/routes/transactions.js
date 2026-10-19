@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { create, update, remove, db } from '../models/database.js';
-import { validate, createTransactionSchema, updateTransactionSchema, transactionQuerySchema } from '../lib/validate.js';
+import { create, update, remove, db, newId } from '../models/database.js';
+import { validate, createTransactionSchema, updateTransactionSchema, transactionQuerySchema, importTransactionsSchema } from '../lib/validate.js';
 
 const router = Router();
 
@@ -50,6 +50,31 @@ router.post('/', validate(createTransactionSchema), async (req, res, next) => {
     });
 
     res.status(201).json(transaction);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/import', validate(importTransactionsSchema), async (req, res, next) => {
+  try {
+    const items = req.body.transactions;
+    const now = new Date().toISOString();
+
+    db.exec('BEGIN');
+    try {
+      const stmt = db.prepare(
+        'INSERT INTO transactions (id, type, amount, category, description, date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      );
+      for (const t of items) {
+        stmt.run(newId(), t.type, t.amount, t.category, t.description || '', t.date, now);
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+
+    res.status(201).json({ message: `Imported ${items.length} transactions`, imported: items.length });
   } catch (err) {
     next(err);
   }
