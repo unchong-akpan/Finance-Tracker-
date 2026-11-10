@@ -46,6 +46,7 @@ export function TransactionTable({
   onDelete,
   sort,
   onSort,
+  aiInsights = {},
 }) {
   if (loading) return <TableSkeleton />;
 
@@ -105,58 +106,82 @@ export function TransactionTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {list.map((t) => (
-              <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                  {t.date}
-                  <span className="block sm:hidden text-xs text-gray-500 dark:text-gray-400">
-                    {t.type} · {t.category}
-                  </span>
-                </td>
-                <td className="hidden sm:table-cell px-4 sm:px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`px-2 py-1 text-xs rounded-full ${
+            {list.map((t) => {
+              const insight = aiInsights[t.id];
+              const hasSuggestion =
+                insight && insight.differs && insight.confidence >= 0.65;
+
+              return (
+                <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {t.date}
+                    <span className="block sm:hidden text-xs text-gray-500 dark:text-gray-400">
+                      {t.type} · {t.category}
+                    </span>
+                  </td>
+                  <td className="hidden sm:table-cell px-4 sm:px-6 py-4 whitespace-nowrap">
+                    <span
+                      className={`px-2 py-1 text-xs rounded-full ${
+                        t.type === 'income'
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                          : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
+                      }`}
+                    >
+                      {t.type}
+                    </span>
+                  </td>
+                  <td className="hidden md:table-cell px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {t.category}
+                    {hasSuggestion && (
+                      <span
+                        title={`AI suggests ${insight.suggested_category} (${Math.round(
+                          insight.confidence * 100
+                        )}% confidence)`}
+                        className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+                      >
+                        AI: {insight.suggested_category}
+                      </span>
+                    )}
+                  </td>
+                  <td className="hidden lg:table-cell px-4 sm:px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    {t.description || '-'}
+                  </td>
+                  <td
+                    className={`px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-semibold text-right ${
                       t.type === 'income'
-                        ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                        : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-red-600 dark:text-red-400'
                     }`}
                   >
-                    {t.type}
-                  </span>
-                </td>
-                <td className="hidden md:table-cell px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                  {t.category}
-                </td>
-                <td className="hidden lg:table-cell px-4 sm:px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                  {t.description || '-'}
-                </td>
-                <td
-                  className={`px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-semibold text-right ${
-                    t.type === 'income'
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
-                  }`}
-                >
-                  {formatSigned(t.amount, t.type)}
-                </td>
-                <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm space-x-3">
-                  <button
-                    onClick={() => onEdit(t)}
-                    aria-label={`Edit transaction ${t.description || t.category}`}
-                    className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => onDelete(t.id)}
-                    aria-label={`Delete transaction ${t.description || t.category}`}
-                    className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    {formatSigned(t.amount, t.type)}
+                    {insight?.is_anomaly && (
+                      <span
+                        title={insight.anomaly_reason || 'Unusual spending'}
+                        className="block text-xs font-normal text-amber-600 dark:text-amber-400"
+                      >
+                        Unusual
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm space-x-3">
+                    <button
+                      onClick={() => onEdit(t)}
+                      aria-label={`Edit transaction ${t.description || t.category}`}
+                      className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => onDelete(t.id)}
+                      aria-label={`Delete transaction ${t.description || t.category}`}
+                      className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

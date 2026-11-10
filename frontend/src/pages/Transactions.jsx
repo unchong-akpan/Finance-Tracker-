@@ -13,9 +13,11 @@ import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionFilters } from '../components/transactions/TransactionFilters';
 import { TransactionTable } from '../components/transactions/TransactionTable';
 import { ImportButton } from '../components/transactions/ImportButton';
+import { AiInsights } from '../components/transactions/AiInsights';
 import { ConfirmModal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
 import { useToast } from '../components/ui/Toast';
+import { useAnalyzeTransactions, useApplyAiSuggestions } from '../hooks/useAi';
 import { logActivity } from '../lib/activity';
 
 const emptyForm = {
@@ -39,6 +41,10 @@ export default function Transactions() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [aiResult, setAiResult] = useState(null);
+  const [aiError, setAiError] = useState('');
+  const analyzeAi = useAnalyzeTransactions();
+  const applyAi = useApplyAiSuggestions();
 
   const setFilter = (updater) => {
     setFilterState(updater);
@@ -101,6 +107,59 @@ export default function Transactions() {
     return filteredList.slice(start, start + pageSize);
   }, [filteredList, safePage, pageSize]);
 
+  const aiInsights = useMemo(() => {
+    const map = {};
+    (aiResult?.results || []).forEach((item) => {
+      map[item.id] = item;
+    });
+    return map;
+  }, [aiResult]);
+
+  const runAiReview = async () => {
+    setAiError('');
+    try {
+      const data = await analyzeAi.mutateAsync(filteredList);
+      setAiResult(data);
+    } catch (err) {
+      setAiError(err.response?.data?.error || err.message || 'AI review failed.');
+    }
+  };
+
+  const dismissAi = () => {
+    setAiResult(null);
+    setAiError('');
+    analyzeAi.reset();
+  };
+
+  const applyAiSuggestions = async () => {
+    if (!aiResult) return;
+    const updates = aiResult.results
+      .filter((item) => item.differs && item.confidence >= 0.65)
+      .map((item) => ({ id: item.id, category: item.suggested_category }));
+
+    if (!updates.length) return;
+
+    try {
+      const response = await applyAi.mutateAsync(updates);
+      const skipped = response.skipped || 0;
+      toast.success(
+        `AI updated ${response.updated} transaction${response.updated === 1 ? '' : 's'}.`
+      );
+      if (skipped > 0) {
+        toast.info(`${skipped} suggestion${skipped === 1 ? '' : 's'} could not be applied.`);
+      }
+      logActivity({
+        action: 'update',
+        entity: 'transaction',
+        label: `AI updated ${response.updated} transaction${response.updated === 1 ? '' : 's'}`,
+        detail: 'Accepted AI category suggestions',
+      });
+      setAiResult(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not apply AI suggestions.');
+    }
+  };
+
   const closeForm = () => {
     setShowForm(false);
     setEditingId(null);
@@ -131,12 +190,14 @@ export default function Transactions() {
         toast.success('Transaction added');
       }
       closeForm();
+      setAiResult(null);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to save transaction.');
     }
   };
 
   const handleEdit = (t) => {
+    setAiResult(null);
     setEditingId(t.id);
     setFormData({
       type: t.type,
@@ -153,6 +214,7 @@ export default function Transactions() {
     const t = rawList.find((x) => x.id === id);
     if (!t) return setConfirmDelete(null);
     setConfirmDelete(null);
+    setAiResult(null);
 
     const previous = queryClient.getQueriesData({ queryKey: transactionKeys.all });
     queryClient.setQueriesData({ queryKey: transactionKeys.all }, (old) =>
@@ -204,6 +266,14 @@ export default function Transactions() {
   return (
     <div className="space-y-6">
       <PageHeader title="Transactions">
+        <button
+          onClick={runAiReview}
+          disabled={analyzeAi.isPending || !filteredList.length}
+          className="border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+        >
+          <span aria-hidden="true">✦</span>{' '}
+          {analyzeAi.isPending ? 'Analysing…' : 'AI Review'}
+        </button>
         <ImportButton onImported={() => queryClient.invalidateQueries({ queryKey: transactionKeys.all })} />
         <button
           onClick={exportCsv}
@@ -219,6 +289,16 @@ export default function Transactions() {
           {showForm ? 'Cancel' : '+ Add Transaction'}
         </button>
       </PageHeader>
+
+      <AiInsights
+        result={aiResult}
+        loading={analyzeAi.isPending}
+        error={aiError}
+        applying={applyAi.isPending}
+        onApply={applyAiSuggestions}
+        onDismiss={dismissAi}
+        onRetry={runAiReview}
+      />
 
       {showForm && (
         <TransactionForm
@@ -242,6 +322,7 @@ export default function Transactions() {
         onDelete={(id) => setConfirmDelete(id)}
         sort={sort}
         onSort={setSort}
+        aiInsights={aiInsights}
       />
 
       {!isLoading && !isError && totalItems > 0 && (

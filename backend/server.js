@@ -8,6 +8,7 @@ import budgetRoutes from './routes/budgets.js';
 import statsRoutes from './routes/stats.js';
 import recurringRoutes from './routes/recurring.js';
 import authRoutes from './routes/auth.js';
+import aiRoutes from './routes/ai.js';
 import { initDatabase } from './models/database.js';
 import { optionalAuth } from './lib/auth.js';
 import { readFileSync, existsSync } from 'fs';
@@ -71,6 +72,7 @@ app.use('/api/transactions', optionalAuth, transactionRoutes);
 app.use('/api/budgets', optionalAuth, budgetRoutes);
 app.use('/api/stats', optionalAuth, statsRoutes);
 app.use('/api/recurring', optionalAuth, recurringRoutes);
+app.use('/api/ai', optionalAuth, aiRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

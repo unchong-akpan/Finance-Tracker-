@@ -69,4 +69,11 @@ export const recurring = {
   generate: (month) => api.post('/recurring/generate', { month }),
 };
 
+export const ai = {
+  status: () => api.get('/ai/status'),
+  analyze: (transactions) => api.post('/ai/analyze', { transactions }),
+  suggest: (data) => api.post('/ai/suggest', data),
+  apply: (updates) => api.post('/ai/apply', { updates }),
+};
+
 export default api;

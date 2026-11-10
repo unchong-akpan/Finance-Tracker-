@@ -5,7 +5,9 @@
   "scripts": {
     "server": "cd backend && npm run dev",
     "client": "cd frontend && npm run dev",
+    "ai": "cd ai_service && python server.py",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev:all": "concurrently \"npm run server\" \"npm run client\" \"npm run ai\"",
     "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install"
   },
   "devDependencies": {

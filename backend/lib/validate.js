@@ -100,6 +100,38 @@ export const importTransactionsSchema = z.object({
     .max(500, 'Maximum 500 transactions per import'),
 });
 
+// AI categoriser
+const aiTransactionSchema = z.object({
+  id: z.string().min(1).optional(),
+  type: transactionType,
+  amount: z.coerce.number().nonnegative('Amount cannot be negative').finite(),
+  description: z.string().max(500).optional().default(''),
+  category: z.string().max(100).optional().default('Other'),
+  date: z.string().max(20).optional().default(''),
+});
+
+export const aiAnalyzeSchema = z.object({
+  transactions: z.array(aiTransactionSchema).max(500).optional(),
+});
+
+export const aiSuggestSchema = z.object({
+  type: transactionType,
+  amount: z.coerce.number().nonnegative().finite().optional().default(0),
+  description: z.string().max(500).optional().default(''),
+});
+
+export const aiApplySchema = z.object({
+  updates: z
+    .array(
+      z.object({
+        id: z.string().min(1, 'Transaction id is required'),
+        category: z.string().min(1, 'Category is required').max(100),
+      })
+    )
+    .min(1, 'At least one update is required')
+    .max(500, 'Maximum 500 updates at once'),
+});
+
 // Validation middleware factory
 export function validate(schema, source = 'body') {
   return (req, res, next) => {

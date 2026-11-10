@@ -42,7 +42,7 @@ function normalizeDate(val) {
   // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
   // MM/DD/YYYY or DD/MM/YYYY
-  const m1 = val.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  const m1 = val.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (m1) {
     const [, a, b, y] = m1;
     // Assume MM/DD/YYYY (US format) if first part > 12, otherwise MM/DD
@@ -140,7 +140,7 @@ export function ImportButton({ onImported }) {
 
   const buildTransactions = () => {
     if (!parsed) return [];
-    const { headers, rows } = parsed;
+    const { rows } = parsed;
     return rows
       .map((row) => {
         const date = normalizeDate(row[mapping.date]);

@@ -8,6 +8,15 @@ services:
     environment:
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - CLIENT_URL=${CLIENT_URL:-http://localhost:5000}
+      - AI_SERVICE_URL=http://ai:5055
+    depends_on:
+      - ai
+    restart: unless-stopped
+
+  ai:
+    build: ./ai_service
+    ports:
+      - "5055:5055"
     restart: unless-stopped
 
 volumes:

@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../../constants';
+import { ai } from '../../api';
 
 const inputClass =
   'w-full border dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white';
@@ -6,6 +8,37 @@ const labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 m
 
 export function TransactionForm({ formData, setFormData, onSubmit, onCancel, editingId, saving }) {
   const categories = formData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState(null);
+  const [suggestError, setSuggestError] = useState('');
+
+  const handleSuggest = async () => {
+    if (!(formData.description || '').trim()) {
+      setSuggestError('Add a description first so the AI has something to work with.');
+      return;
+    }
+
+    setSuggesting(true);
+    setSuggestError('');
+    try {
+      const { data } = await ai.suggest({
+        type: formData.type,
+        amount: Number(formData.amount) || 0,
+        description: formData.description,
+      });
+      if (data.confidence >= 0.45) {
+        setFormData((previous) => ({ ...previous, category: data.suggested_category }));
+      }
+      setSuggestion(data);
+    } catch (err) {
+      setSuggestError(
+        err.response?.data?.error ||
+          'AI suggestion unavailable. Is the AI service running? Start it with npm run ai.'
+      );
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   return (
     <form
@@ -29,6 +62,8 @@ export function TransactionForm({ formData, setFormData, onSubmit, onCancel, edi
             value={formData.type}
             onChange={(e) => {
               const newType = e.target.value;
+              setSuggestion(null);
+              setSuggestError('');
               setFormData({
                 ...formData,
                 type: newType,
@@ -49,16 +84,34 @@ export function TransactionForm({ formData, setFormData, onSubmit, onCancel, edi
             min="0.01"
             required
             value={formData.amount}
-            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+            onChange={(e) => {
+              setSuggestion(null);
+              setSuggestError('');
+              setFormData({ ...formData, amount: e.target.value });
+            }}
             className={inputClass}
             placeholder="0.00"
           />
         </div>
         <div>
-          <label className={labelClass}>Category</label>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <label className={`${labelClass} mb-0`}>Category</label>
+            <button
+              type="button"
+              onClick={handleSuggest}
+              disabled={suggesting || !(formData.description || '').trim()}
+              className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Suggest a category from the description and amount"
+            >
+              <span aria-hidden="true">✦</span> {suggesting ? 'Thinking…' : 'AI suggest'}
+            </button>
+          </div>
           <select
             value={formData.category}
-            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            onChange={(e) => {
+              setSuggestion(null);
+              setFormData({ ...formData, category: e.target.value });
+            }}
             className={inputClass}
           >
             {categories.map((c) => (
@@ -67,6 +120,19 @@ export function TransactionForm({ formData, setFormData, onSubmit, onCancel, edi
               </option>
             ))}
           </select>
+          {suggestion && (
+            <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
+              AI suggested <strong>{suggestion.suggested_category}</strong> (
+              {Math.round(suggestion.confidence * 100)}% confidence)
+              {suggestion.source === 'rule' ? ' · keyword match' : ''}
+              {suggestion.confidence < 0.45
+                ? ' · low confidence, please confirm or choose manually'
+                : ''}
+            </p>
+          )}
+          {suggestError && (
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">{suggestError}</p>
+          )}
         </div>
         <div>
           <label className={labelClass}>Date</label>
@@ -84,7 +150,11 @@ export function TransactionForm({ formData, setFormData, onSubmit, onCancel, edi
         <input
           type="text"
           value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          onChange={(e) => {
+            setSuggestion(null);
+            setSuggestError('');
+            setFormData({ ...formData, description: e.target.value });
+          }}
           className={inputClass}
           placeholder="Optional description"
         />
