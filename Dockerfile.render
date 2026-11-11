@@ -1,0 +1,36 @@
+# Render.com deployment image
+# Builds the React frontend, then runs the Node backend with the
+# zero-dependency Python AI service inside the same container.
+
+FROM node:22-bookworm-slim AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM node:22-bookworm
+
+# The full Node image is based on buildpack-deps and includes Debian's
+# python3, so we do not need apt-get (and its network dependency) at build time.
+RUN python3 --version
+
+WORKDIR /app
+
+COPY backend/package*.json ./backend/
+RUN cd backend && npm ci --omit=dev
+
+COPY backend/ ./backend/
+COPY ai_service/ ./ai_service/
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+COPY start-render.sh /app/start-render.sh
+RUN chmod +x /app/start-render.sh
+
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV AI_SERVICE_URL=http://127.0.0.1:5055
+ENV DB_PATH=/app/backend/demo.db
+
+EXPOSE 5000
+
+CMD ["/app/start-render.sh"]

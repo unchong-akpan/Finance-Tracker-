@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: finance-tracker
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.render
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        value: "*"
+      - key: DB_PATH
+        value: /app/backend/demo.db
+      - key: AI_SERVICE_URL
+        value: http://127.0.0.1:5055

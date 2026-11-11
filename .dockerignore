@@ -5,6 +5,7 @@ build
 *.db
 *.db-wal
 *.db-shm
+!backend/demo.db
 backups
 .env
 .env.*
