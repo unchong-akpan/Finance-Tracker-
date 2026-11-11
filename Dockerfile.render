@@ -11,9 +11,17 @@ RUN npm run build
 
 FROM node:22-bookworm
 
-# The full Node image is based on buildpack-deps and includes Debian's
-# python3, so we do not need apt-get (and its network dependency) at build time.
-RUN python3 --version
+# The full Node image is based on buildpack-deps, which normally already
+# ships Debian's python3. Only reach for apt-get if it is genuinely missing,
+# so the build does not depend on the network in the common case.
+RUN if command -v python3 >/dev/null 2>&1; then \
+      python3 --version; \
+    else \
+      (apt-get update \
+        && apt-get install -y --no-install-recommends python3 \
+        && rm -rf /var/lib/apt/lists/*) \
+      || echo "WARNING: python3 unavailable; AI service will be disabled"; \
+    fi
 
 WORKDIR /app
 
